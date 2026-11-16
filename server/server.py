@@ -14,7 +14,6 @@ MAX_CONTENT_LEN = 1000000 # The content can have at most 1,000,000 characters.
 MAX_MESSAGE_SIZE = MAX_CONTENT_LEN + 100000 # Largest message either side will accept.
 MARKER = "Content: \n" # Separates the email header from the email contents.
 
-
 #user_login = "user1"
 #file_information = {}
 cwd = os.getcwd()
@@ -59,6 +58,7 @@ def server():
                 print(addr,'   ',connectionSocket)
 
                 try:
+                    # Login: returns (username, sym_key) or None if the login failed (connection already closed)
                     result = login_attempt(logins, connectionSocket, serverPrivateKey)
                     if (result is None):
                         continue # Wait for the next client
@@ -74,6 +74,7 @@ def server():
                             login_attempt(logins, username, password, connectionSocket)
                             welcome_count += 1
                         """
+
                         SendMessage(connectionSocket,
                             "Select the operation:"
                             "\n  1) Create and send an email"
@@ -81,11 +82,12 @@ def server():
                             "\n  3) Display the email contents"
                             "\n  4) Terminate the connection"
                             "\n\nchoice: ", sym_key)
+
                         choice = ReceiveMessage(connectionSocket, sym_key).strip()
 
     #---------------------------------------------------------------------------------------
 
-                        if (protocol_decider(choice, connectionSocket, username, sym_key) == TRUE):
+                        if protocol_decider(choice, connectionSocket, username, sym_key) == 'DONE':
                             break # The connection was terminated, wait for the next client
 
     #---------------------------------------------------------------------------------------
@@ -117,6 +119,9 @@ def parse_users():
         users = json.load(f)
     return users
 
+# Receives the RSA-encrypted username/password, checks them and, if valid, generates the AES key
+# and sends it to the client encrypted with the client's public key.
+# Returns (username, sym_key) if the login succeeded, otherwise None (the connection is closed).
 def login_attempt(logins, cSocket, serverPrivateKey):
     """
     Author: 
@@ -136,7 +141,6 @@ def login_attempt(logins, cSocket, serverPrivateKey):
     """
     username = ""
     valid = False
-    
     # Receive the login message and decrypt it with the server's private key. The message is "username\npassword".
     try:
         encrypted = ReceiveBytes(cSocket)
@@ -147,17 +151,16 @@ def login_attempt(logins, cSocket, serverPrivateKey):
         pass # Could not be decrypted/parsed: treated as an invalid login
     
     # User is valid. Now get their public key on the server, which is used to send the AES key.
-    if (valid):
+    if valid:
         try:
             with open(username + "_public.pem", 'rb') as f:
                 clientPublicKey = RSA.import_key(f.read())
         except (OSError, ValueError) as e:
             print("Could not load the public key of " + username + ":", e)
             valid = False
-    
-    # Invalid login: tell the client (unencrypted), print the message on the server screen and close the connection.
+ 
     if (not valid):
-        SendMessage(cSocket, 'Invalid username or password')
+        SendMessage(cSocket, 'Invalid username or password')    # Not encrypted
         print("The received client information: " + username + " is invalid (Connection Terminated).")
         cSocket.close()
         return None
@@ -198,7 +201,7 @@ def protocol_1(connectionSocket:object, username:str, sym_key:bytes):
     Parameters:
         socket connectionSocket: The socket used to communicate with the connected client.
         str username: The username of the connected (logged in) client.
-        bytes sym_key: The AES key shared with this client. 
+        bytes sym_key: The AES key shared with this client (None if not encrypting).
     Pre: The parameters are valid and the client chose operation 1 from the menu.
     Post: If the email is valid, it is saved as [source]_[title].txt in each valid destination's folder.
     Throws: ConnectionError if the receive failed.
@@ -221,7 +224,7 @@ def protocol_1(connectionSocket:object, username:str, sym_key:bytes):
 def ValidateEmail(email:str, username:str):
     """
     Author: Nathan
-    Purpose: Checks that a received email follows the email format specifications.
+    Purpose: Checks that a received email follows the email message specifications.
     Parameters:
         str email: The full email text received from the client.
         str username: The username of the connected client.
@@ -239,7 +242,7 @@ def ValidateEmail(email:str, username:str):
         return None
     sender = lines[0][len("From: "):].strip()
     toField = lines[1][len("To: "):].strip()
-    title = lines[2][len("Title: "):].strip()
+    title = lines[2][len("Title: "):]
     try:
         contentLength = int(lines[3][len("Content Length: "):].strip())
     except ValueError:
@@ -250,10 +253,10 @@ def ValidateEmail(email:str, username:str):
         print("Email from " + username + " rejected: the From field does not match the logged in user.")
         return None
     # Check the title and content lengths.
-    if ((len(title) == 0) or (len(title) > MAX_TITLE_LEN)):
+    if (len(title) == 0 or len(title) > MAX_TITLE_LEN):
         print("Email from " + username + " rejected: invalid title length.")
         return None
-    if ((contentLength != len(content)) or (contentLength > MAX_CONTENT_LEN)):
+    if (contentLength != len(content) or contentLength > MAX_CONTENT_LEN):
         print("Email from " + username + " rejected: invalid content length.")
         return None
     # Only keep the destinations that are known clients.
@@ -261,12 +264,10 @@ def ValidateEmail(email:str, username:str):
     destinations = []
     for dest in toField.split(";"):
         dest = dest.strip()
-        if ((dest in knownUsers) and (dest not in destinations)):
+        if (dest in knownUsers and dest not in destinations):
             destinations.append(dest)
-        else: 
-            print("User " + dest + " does not exit. Parsing through remaining destinations.") 
     if (len(destinations) == 0):
-        print("Email rejected: no valid destinations.")
+        print("Email from " + username + " rejected: no valid destinations.")
         return None
     return (sender, destinations, title, contentLength, content)
  
@@ -281,18 +282,19 @@ def SaveEmail(sender:str, destinations:list, title:str, contentLength:int, conte
         int contentLength: The number of characters in the content.
         str content: The email contents.
     Pre: The parameters are valid and the email was checked by ValidateEmail().
-    Post: A file named [sender]_[title].txt is created in each destination's folder. If the destination folder does not exist, it is created. 
+    Post: A file named [sender]_[title].txt is created in each destination's folder.
     Throws: None
     Returns: A string containing the full email as it was saved (with the Time and Date line).
     """
-    timeReceived = str(datetime.datetime.now()) # The time and date the complete email was received.
+    # The time and date the complete email was received.
+    timeReceived = str(datetime.datetime.now())
     email = ("From: " + sender + "\n" +
              "To: " + ";".join(destinations) + "\n" +
              "Time and Date: " + timeReceived + "\n" +
              "Title: " + title + "\n" +
              "Content Length: " + str(contentLength) + "\n" +
              "Content: \n" + content)
-    # Slashes are replaced to prevent injection. 
+    # Slashes are replaced so that a title can never place the file outside the client's folder.
     fileName = sender + "_" + title.replace("/", "_").replace("\\", "_").replace("\x00", "_") + ".txt"
     for dest in destinations:
         folder = os.path.join(cwd, dest)
@@ -340,17 +342,15 @@ def protocol_3(cSocket):
 #---------------------------------------------------------------------------------------
 # CONNECTION TERMINATION PROTOCOL (MARCOS)
 def protocol_4(cSocket, username):
-    # if login_status:
-    #    cSocket.sendall(('Terminating connection with ' + username + '.').encode('ascii'))
-    # else:
-    #    cSocket.sendall('Terminating.'.encode('ascii'))
+    # Section I.1: the server prints the message on its own screen and closes the connection.
+    # (The client prints its own "The connection is terminated with the server." message.)
     print('Terminating connection with ' + username + '.')
     cSocket.close()
     return
 
 #-------------------------------------------------------------------------------------------
 
-def SendBytes(connectionSocket:object, data:bytes):
+def SendBytes(connectionSocket, data:bytes):
     """
     Author: Nathan
     Purpose: Sends raw bytes to the other side of the connection. Used for the RSA encrypted login messages.
@@ -364,7 +364,7 @@ def SendBytes(connectionSocket:object, data:bytes):
     """
     connectionSocket.sendall(len(data).to_bytes(4, byteorder = "big") + data)
  
-def ReceiveBytes(connectionSocket:object):
+def ReceiveBytes(connectionSocket):
     """
     Author: Nathan
     Purpose: Receives raw bytes from the other side of the connection. Used for the RSA encrypted login messages.
@@ -391,7 +391,7 @@ def ReceiveBytes(connectionSocket:object):
                 raise ConnectionError("Message is too large")
     return bytes(message)
 
-def SendMessage(connectionSocket:object, message_str:str, sym_key:bytes = None):
+def SendMessage(connectionSocket, message_str, sym_key = None):
     """
     Author: Nathan
     Purpose: Sends a message to the other side of the connection.
@@ -415,7 +415,7 @@ def SendMessage(connectionSocket:object, message_str:str, sym_key:bytes = None):
     # Send the message
     connectionSocket.sendall(message_final)
 
-def ReceiveMessage(connectionSocket:object, sym_key:bytes = None):
+def ReceiveMessage(connectionSocket, sym_key = None):
     """
     Author: Nathan
     Purpose: Receives a message from the other side of the connection.
