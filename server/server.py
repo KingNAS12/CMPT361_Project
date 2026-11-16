@@ -315,7 +315,7 @@ def protocol_2(cSocket, username, sym_key):
             sender = line[6:-1]
             fp.readline() #Destination line, skip
             line = fp.readline() #Time date line
-            date_time = line[16:-1]
+            date_time = line[15:-1]
             line = fp.readline() #Title line
             title = line[7:-1]
             emails.append([0, sender, date_time, title])
@@ -326,7 +326,7 @@ def protocol_2(cSocket, username, sym_key):
     text = ""
     for i in range(len(emails)):
         emails[i][0] = i
-        text += emails[i] + "\n"
+        text += str(emails[i]) + "\n"
 
     SendMessage(cSocket, text, sym_key)
 
@@ -458,7 +458,7 @@ def ReceiveMessage(connectionSocket, sym_key = None):
 def EmailSort(email):
     date = datetime.datetime(2000, 1, 1) #Y2K, for funny
     
-    delta = date - email[2]
+    delta = date - datetime.datetime.strptime(email[2], "%Y-%m-%d %H:%M:%S.%f")
 
     time = (((delta.days*24*3600)+delta.seconds)*1000*1000)+delta.microseconds #Convert the delta time into microsecond difference
 

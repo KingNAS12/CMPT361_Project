@@ -124,8 +124,7 @@ def client():
                         protocol_1_client(clientSocket, username, sym_key)
 
                     elif choice == '2':
-                        # TBA 
-                        pass
+                        protocol_2_client(clientSocket, username, sym_key)
 
                     elif choice == '3':
                         # TBA 
