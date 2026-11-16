@@ -9,6 +9,7 @@ from Crypto.PublicKey import RSA
 MAX_TITLE_LEN = 100 # The title can have at most 100 characters.
 MAX_CONTENT_LEN = 1000000 # The content can have at most 1,000,000 characters.
 MAX_MESSAGE_SIZE = MAX_CONTENT_LEN + 100000 # Largest message either side will accept.
+MARKER = "Content: \n" # Separates the email header from the email contents.
 
 def client():
     # Server Information
@@ -58,18 +59,21 @@ def client():
 
         """ Nathan's edits
         Replaced the plain-text login above. 
-        The login now follows uses key encryption.
-        - The client asks for the username and password itself, so the server's welcome/prompt messages and the welcome_count flag are no longer needed.
-        - The username and password are sent encrypted with the server's public key (RSA, OAEP) using SendBytes, since the encrypted data is not ASCII text.
-        - The server replies with either an unencrypted "Invalid username or password" (the client prints the error and terminates) or 
-            the AES key (sym_key) encrypted with this client's public key.
-        - The client's private key is only loaded after the login is accepted, because an unknown client does not have one.
+        - The client asks for the username and password itself, so the server's
+          welcome/prompt messages and the welcome_count flag are no longer needed.
+        - The username and password are sent encrypted with the server's public key
+           (RSA, OAEP) using SendBytes, since the encrypted data is not ASCII text.
+        - The server replies with either an unencrypted "Invalid username or password"
+           (the client prints the error and terminates) or the AES key (sym_key)
+            encrypted with this client's public key.
+        - The client's private key is only loaded after the login is accepted, because
+            an unknown client does not have one.
         - The client confirms it received sym_key by sending "OK" encrypted with it.
         All later messages (menu, choices, emails) are encrypted with sym_key.
         """
-
         username = input("Enter your username: ").strip()
         password = input("Enter your password: ").strip()
+        # Load the server's public key (the client's own private key is loaded once the login is accepted,
         try:
             with open('server_public.pem', 'rb') as f:
                 serverPublicKey = RSA.import_key(f.read())
@@ -82,7 +86,8 @@ def client():
         try:
             login = (username + "\n" + password).encode('ascii')
             SendBytes(clientSocket, PKCS1_OAEP.new(serverPublicKey).encrypt(login))
-        except Exception as e:
+        except (UnicodeEncodeError, ValueError) as e:
+            # Not ascii, or too long for the RSA key to encrypt
             print("The username and password cannot be sent:", e, "\nTerminating.")
             clientSocket.close()
             sys.exit(1)
@@ -97,15 +102,17 @@ def client():
             with open(username + '_private.pem', 'rb') as f:
                 clientPrivateKey = RSA.import_key(f.read())
             sym_key = PKCS1_OAEP.new(clientPrivateKey).decrypt(response)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print("Could not get the symmetric key:", e, "\nTerminating.")
             clientSocket.close()
             sys.exit(1)
         SendMessage(clientSocket, "OK", sym_key)
 
         # Login was successful. Now get menu choice. 
+
         while True:
                 try:
+    
                     # Prints the menu
                     prompt = ReceiveMessage(clientSocket, sym_key)
                     choice = ""
@@ -117,13 +124,13 @@ def client():
                         protocol_1_client(clientSocket, username, sym_key)
 
                     elif choice == '2':
-                        # TBA
+                        # TBA 
                         pass
 
                     elif choice == '3':
-                        # TBA
+                        # TBA 
                         pass
-
+                    
                     elif choice == '4':
                         print("The connection is terminated with the server.")
                         clientSocket.close()
@@ -234,7 +241,7 @@ def GetContent():
             try:
                 with open(fileName, "r") as fp:
                     content = fp.read()
-            except Exception as e:
+            except (OSError, UnicodeDecodeError) as e:
                 print("Could not read the file: ", e)
                 continue
         else:
@@ -352,7 +359,5 @@ def ReceiveMessage(connectionSocket, sym_key = None):
         except ValueError:
             raise ConnectionError("Message could not be decrypted")
     return message.decode('ascii')
-
-
 
 client()
