@@ -305,11 +305,23 @@ def SaveEmail(sender:str, destinations:list, title:str, contentLength:int, conte
 
 #---------------------------------------------------------------------------------------
 # DISPLAY INBOX PROTOCOL
-def protocol_2(cSocket, username, sym_key):
+def protocol_2(cSocket:object, username:str, sym_key:bytes):
+    """
+    Author: Sidney
+    Purpose: Handles protocol 2 on the server side
+    Parameters:
+        socket connectionSocket: The socket used to communicate with the connected client.
+        str username: The username of the connected (logged in) client.
+        bytes sym_key: The AES key shared with this client (None if not encrypting).
+    Pre: The parameters are valid and the client chose option 2.
+    Post: The list of emails were sent to the client, an OK was recieved
+    Throws: ConnectionError if the receive failed.
+    Returns: None
+    """
     folder = os.path.join(cwd, username)
     os.makedirs(folder, exist_ok = True)
     emails = list()
-    for email in os.listdir(folder):
+    for email in os.listdir(folder): #Cycle through each email in the directory
         with open(os.path.join(folder, email), "r") as fp:
             line = fp.readline() #From line
             sender = line[6:-1]
@@ -318,18 +330,20 @@ def protocol_2(cSocket, username, sym_key):
             date_time = line[15:-1]
             line = fp.readline() #Title line
             title = line[7:-1]
-            emails.append([0, sender, date_time, title])
-
+            emails.append([0, sender, date_time, title]) #index is 0 for now, gets fixed after sort
+    #Sorts email by most recent
     emails.sort(key= EmailSort)
 
-
+    #Puts each email into a string message
     text = ""
     for i in range(len(emails)):
-        emails[i][0] = i
+        emails[i][0] = i #Fix index value
         text += str(emails[i]) + "\n"
 
+    #Send email string
     SendMessage(cSocket, text, sym_key)
 
+    #Receive OK
     ReceiveMessage(cSocket, sym_key)
     
     return
@@ -455,10 +469,20 @@ def ReceiveMessage(connectionSocket, sym_key = None):
             raise ConnectionError("Message could not be decrypted")
     return message.decode('ascii')
 
-def EmailSort(email):
-    date = datetime.datetime(2000, 1, 1) #Y2K, for funny
+def EmailSort(email:list):
+    """
+    Author: Sidney
+    Purpose: Gives a numeric way to sort emails
+    Parameters:
+        list email: A email in the form of a list where [index, sender, date time, title]
+    Pre: The client had requested to view their emails
+    Post: A number based on the email's date and time is returned
+    Throws: None
+    Returns: A number, the number of microseconds until Y2K (a negative number for all dates past Y2K)
+    """
+    date = datetime.datetime(2000, 1, 1) #Y2K, for funny, and 2000 is a good baseline
     
-    delta = date - datetime.datetime.strptime(email[2], "%Y-%m-%d %H:%M:%S.%f")
+    delta = date - datetime.datetime.strptime(email[2], "%Y-%m-%d %H:%M:%S.%f") #Turn string date into proper date, find difference
 
     time = (((delta.days*24*3600)+delta.seconds)*1000*1000)+delta.microseconds #Convert the delta time into microsecond difference
 

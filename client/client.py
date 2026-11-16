@@ -179,6 +179,18 @@ def protocol_1_client(clientSocket:object, username:str, sym_key:bytes = None):
     print("The message is sent to the server.")
 
 def protocol_2_client(clientSocket:object, username:str, sym_key:bytes = None):
+    """
+        Author: Sidney
+        Purpose: Clientside viewing of the email list, just shown as a new-line separated list
+        Parameters:
+            socket clientSocket: The socket used to communicate with the server.
+            str username: The username of the client that is logged in.
+            bytes sym_key: The AES key shared with the server (None if not encrypting).
+        Pre: The parameters are valid and the client chose operation 2 from the menu.
+        Post: The list of emails is printed to the client and a confirmation is sent to the server
+        Throws: ConnectionError if the receive failed.
+        Returns: None
+        """
     text = ReceiveMessage(clientSocket, sym_key)
     print(text)
     SendMessage(clientSocket, "OK", sym_key)
