@@ -171,6 +171,12 @@ def protocol_1_client(clientSocket:object, username:str, sym_key:bytes = None):
              "Content: \n" + content)
     SendMessage(clientSocket, email, sym_key)
     print("The message is sent to the server.")
+
+def protocol_2_client(clientSocket:object, username:str, sym_key:bytes = None):
+    text = ReceiveMessage(clientSocket, sym_key)
+    print(text)
+    SendMessage(clientSocket, "OK", sym_key)
+    return
  
 def GetDestinations():
     """

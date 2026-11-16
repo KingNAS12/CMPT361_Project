@@ -179,7 +179,7 @@ def protocol_decider(choice, cSocket, username, sym_key = None):
     if choice == '1':
         protocol_1(cSocket, username, sym_key)
     elif choice == '2':
-        protocol_2(cSocket)
+        protocol_2(cSocket, username, sym_key)
     elif choice == '3':
         protocol_3(cSocket)
     else:
@@ -216,6 +216,7 @@ def protocol_1(connectionSocket:object, username:str, sym_key:bytes):
     # Print the required message on the server screen.
     print("An email from " + sender + " is sent to " + ";".join(destinations) + " has a content length of " + str(contentLength) + " .")
     savedEmail = SaveEmail(sender, destinations, title, contentLength, content)
+    return
  
 def ValidateEmail(email:str, username:str):
     """
@@ -302,7 +303,33 @@ def SaveEmail(sender:str, destinations:list, title:str, contentLength:int, conte
 
 #---------------------------------------------------------------------------------------
 # DISPLAY INBOX PROTOCOL
-def protocol_2(cSocket):
+def protocol_2(cSocket, username, sym_key):
+    folder = os.path.join(cwd, username)
+    os.makedirs(folder, exist_ok = True)
+    emails = list()
+    for email in os.listdir(folder):
+        with open(os.path.join(folder, email), "r") as fp:
+            line = fp.readline() #From line
+            sender = line[6:-1]
+            fp.readline() #Destination line, skip
+            line = fp.readline() #Time date line
+            date_time = line[16:-1]
+            line = fp.readline() #Title line
+            title = line[7:-1]
+            emails.append([0, sender, date_time, title])
+
+    emails.sort(key= EmailSort)
+
+
+    text = ""
+    for i in range(len(emails)):
+        emails[i][0] = i
+        text += emails[i] + "\n"
+
+    SendMessage(cSocket, text, sym_key)
+
+    ReceiveMessage(cSocket, sym_key)
+    
     return
 
 #---------------------------------------------------------------------------------------
@@ -428,6 +455,14 @@ def ReceiveMessage(connectionSocket:object, sym_key:bytes = None):
             raise ConnectionError("Message could not be decrypted")
     return message.decode('ascii')
 
+def EmailSort(email):
+    date = datetime.datetime(2000, 1, 1) #Y2K, for funny
+    
+    delta = date - email[2]
+
+    time = (((delta.days*24*3600)+delta.seconds)*1000*1000)+delta.microseconds #Convert the delta time into microsecond difference
+
+    return time
 
 
 server()
