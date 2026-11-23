@@ -41,7 +41,6 @@ def server():
     #The server can have five connection in its queue waiting for acceptance
     serverSocket.listen(5)
     print("The server is ready to accept connections")
-    print(f"Master process {os.getpid()}")
 
     while True:
         try:
@@ -53,18 +52,16 @@ def server():
 
         #clones the current running process    
         pid = os.fork()
-
         if pid == 0:
-            # CHILD PROCESS 
-            print(pid)
+            # Child process
+            #server socket is closed once connection socket is established to be able accept more connections
             serverSocket.close()
             server_running(connectionSocket)
             sys.exit(0)  # Terminate child process when done
         else:
-            # --- PARENT PROCESS ---
+            #Parant process
+            #server socket is closed once connection socket is established to be able accept more connections
             connectionSocket.close()
-
-    serverSocket.close()
 
 
 
@@ -208,17 +205,34 @@ def login_attempt(logins, cSocket, serverPrivateKey):
 
 # Runs the subprotocol the client chose. Returns 'DONE' if the connection was terminated, otherwise None.
 def protocol_decider(choice, cSocket, username, sym_key = None):
-    if choice == '1':
-        protocol_1(cSocket, username, sym_key)
-    elif choice == '2':
-        protocol_2(cSocket, username, sym_key)
-    elif choice == '3':
-        protocol_3(cSocket, username, sym_key)
-    else:
-        # Section E.6d: any other choice (including 4) is the termination subprotocol
-        protocol_4(cSocket, username)
-        return 'DONE'
-    return None
+    match choice:
+        case '1':
+            protocol_1(cSocket, username, sym_key)
+            #return None
+        case '2':
+            protocol_2(cSocket, username, sym_key)
+            #return None
+        case '3':
+            protocol_3(cSocket, username, sym_key)
+            #return None
+        case '4':
+            # Section E.6d: any other choice (including 4) is the termination subprotocol
+            protocol_4(cSocket, username)
+            return 'DONE'
+        case _:
+            return None
+        
+    # if choice == '1':
+    #     protocol_1(cSocket, username, sym_key)
+    # elif choice == '2':
+    #     protocol_2(cSocket, username, sym_key)
+    # elif choice == '3':
+    #     protocol_3(cSocket, username, sym_key)
+    # else:
+    #     # Section E.6d: any other choice (including 4) is the termination subprotocol
+    #     protocol_4(cSocket, username)
+    #     return 'DONE'
+    # return None
 
 
 #---------------------------------------------------------------------------------------
@@ -381,6 +395,18 @@ def protocol_2(cSocket:object, username:str, sym_key:bytes):
 #---------------------------------------------------------------------------------------
 # DISPLAY EMAIL CONTENTS PROTOCOL
 def protocol_3(cSocket,username:str, sym_key:bytes):
+    """
+    Author: Owen
+    Purpose: Handles protocol 3 on the server side
+    Parameters:
+        socket connectionSocket: The socket used to communicate with the connected client.
+        str username: The username of the connected (logged in) client.
+        bytes sym_key: The AES key shared with this client (None if not encrypting).
+    Pre: The parameters are valid and the client chose option 3.
+    Post: sends selected email contents to the client, an OK was recieved
+    Throws: ConnectionError if the receive failed.
+    Returns: None
+    """
     folder = os.path.join(cwd, username)
     all_entries = os.listdir(folder)
     emails = [os.path.join(folder, f) 
@@ -389,14 +415,13 @@ def protocol_3(cSocket,username:str, sym_key:bytes):
     emails = sorted(emails, key=os.path.getmtime,reverse=True)
     SendMessage(cSocket,"Enter the email index you wish to view: ",sym_key)
     entry = ReceiveMessage(cSocket,sym_key)
+    try:
+        with open(f"{emails[int(entry)]}","r") as file:
+            contents = file.read()
+            file.close()
+    except:
+        contents = "invalid Email"
     while True:
-        try:
-            with open(f"{emails[int(entry)]}","r") as file:
-                contents = file.read()
-                file.close()
-        except:
-            contents = "invalid file"
-
         SendMessage(cSocket,f"\n{contents}\n",sym_key)
         if ReceiveMessage(cSocket, sym_key) == "OK":
             return
