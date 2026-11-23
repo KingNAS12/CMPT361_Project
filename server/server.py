@@ -25,6 +25,8 @@ def server():
     #Create server socket that uses IPv4 and TCP protocols 
     try:
         serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #socket seetings to release the socket immideatly after connection closure
+        serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     except socket.error as e:
         print('Error in server socket creation:',e)
         sys.exit(1)
@@ -36,14 +38,41 @@ def server():
         sys.exit(1)        
         
     # print('The server is ready to accept connections')
-    #The server can only have one connection in its queue waiting for acceptance
-    serverSocket.listen(1)
+    #The server can have five connection in its queue waiting for acceptance
+    serverSocket.listen(5)
     print("The server is ready to accept connections")
-    logins = parse_users()
+    print(f"Master process {os.getpid()}")
 
+    while True:
+        try:
+            # Parent blocks here waiting for a new connection
+            connectionSocket, addr = serverSocket.accept()
+            print(addr,'   ',connectionSocket)
+        except KeyboardInterrupt:
+            break
+
+        #clones the current running process    
+        pid = os.fork()
+
+        if pid == 0:
+            # CHILD PROCESS 
+            print(pid)
+            serverSocket.close()
+            server_running(connectionSocket)
+            sys.exit(0)  # Terminate child process when done
+        else:
+            # --- PARENT PROCESS ---
+            connectionSocket.close()
+
+    serverSocket.close()
+
+
+
+def server_running(connectionSocket):
+    #logins = parse_users()
     # welcome_count = 0
-    
     # Loads the server's RSA private key (used to decrypt client logins), and exits with an error if the file is missing or invalid.
+    logins = parse_users()
     try:
         with open('server_private.pem', 'rb') as f:
             serverPrivateKey = RSA.import_key(f.read())
@@ -52,10 +81,10 @@ def server():
         sys.exit(1)
 
     while True:
-            try:
-                #Server accepts client connection
-                connectionSocket, addr = serverSocket.accept()
-                print(addr,'   ',connectionSocket)
+            # try:
+            #     #Server accepts client connection
+            #     connectionSocket, addr = serverSocket.accept()
+            #    
 
                 try:
                     # Login: returns (username, sym_key) or None if the login failed (connection already closed)
@@ -88,7 +117,7 @@ def server():
     #---------------------------------------------------------------------------------------
 
                         if protocol_decider(choice, connectionSocket, username, sym_key) == 'DONE':
-                            break # The connection was terminated, wait for the next client
+                            return # The connection was terminated, return to main server loop
 
     #---------------------------------------------------------------------------------------
                 except (ConnectionError, socket.error) as e:
@@ -103,11 +132,11 @@ def server():
             #    print('An error occured:',e)
             #    serverSocket.close() 
             #    sys.exit(1)        
-            except KeyboardInterrupt:
-                print('Goodbye')
-                serverSocket.close() 
-                sys.exit(0)
-                serverSocket.close()
+            # except KeyboardInterrupt:
+            #     print('Goodbye')
+            #     serverSocket.close() 
+            #     sys.exit(0)
+            #     serverSocket.close()
 
 #---------------------------------------------------------------------------------------
 
@@ -184,7 +213,7 @@ def protocol_decider(choice, cSocket, username, sym_key = None):
     elif choice == '2':
         protocol_2(cSocket, username, sym_key)
     elif choice == '3':
-        protocol_3(cSocket)
+        protocol_3(cSocket, username, sym_key)
     else:
         # Section E.6d: any other choice (including 4) is the termination subprotocol
         protocol_4(cSocket, username)
@@ -301,6 +330,7 @@ def SaveEmail(sender:str, destinations:list, title:str, contentLength:int, conte
         os.makedirs(folder, exist_ok = True) # Make sure the client's folder exists.
         with open(os.path.join(folder, fileName), "w") as fp:
             fp.write(email)
+            fp.close()
     return email
 
 #---------------------------------------------------------------------------------------
@@ -350,8 +380,27 @@ def protocol_2(cSocket:object, username:str, sym_key:bytes):
 
 #---------------------------------------------------------------------------------------
 # DISPLAY EMAIL CONTENTS PROTOCOL
-def protocol_3(cSocket):
-    return
+def protocol_3(cSocket,username:str, sym_key:bytes):
+    folder = os.path.join(cwd, username)
+    all_entries = os.listdir(folder)
+    emails = [os.path.join(folder, f) 
+        for f in all_entries 
+        if os.path.isfile(os.path.join(folder, f))]
+    emails = sorted(emails, key=os.path.getmtime,reverse=True)
+    SendMessage(cSocket,"Enter the email index you wish to view: ",sym_key)
+    entry = ReceiveMessage(cSocket,sym_key)
+    while True:
+        try:
+            with open(f"{emails[int(entry)]}","r") as file:
+                contents = file.read()
+                file.close()
+        except:
+            contents = "invalid file"
+
+        SendMessage(cSocket,f"\n{contents}\n",sym_key)
+        if ReceiveMessage(cSocket, sym_key) == "OK":
+            return
+    
 
 #---------------------------------------------------------------------------------------
 # CONNECTION TERMINATION PROTOCOL (MARCOS)

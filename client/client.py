@@ -127,8 +127,8 @@ def client():
                         protocol_2_client(clientSocket, username, sym_key)
 
                     elif choice == '3':
-                        # TBA 
-                        pass
+                        protocol_3_client(clientSocket, username, sym_key)
+                        
                     
                     elif choice == '4':
                         print("The connection is terminated with the server.")
@@ -195,7 +195,20 @@ def protocol_2_client(clientSocket:object, username:str, sym_key:bytes = None):
     print(text)
     SendMessage(clientSocket, "OK", sym_key)
     return
- 
+
+def protocol_3_client(clientSocket:object, username:str, sym_key:bytes = None):
+    
+    text = ReceiveMessage(clientSocket, sym_key)
+    inp = input(text)
+    SendMessage(clientSocket,inp,sym_key)
+    email = ReceiveMessage(clientSocket, sym_key)
+    print(email)
+    SendMessage(clientSocket, "OK", sym_key)
+    return
+
+
+
+
 def GetDestinations():
     """
     Author: Nathan
@@ -258,6 +271,7 @@ def GetContent():
             try:
                 with open(fileName, "r") as fp:
                     content = fp.read()
+                    fp.close()
             except (OSError, UnicodeDecodeError) as e:
                 print("Could not read the file: ", e)
                 continue
