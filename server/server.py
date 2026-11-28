@@ -39,7 +39,7 @@ def server():
         
     # print('The server is ready to accept connections')
     #The server can have five connection in its queue waiting for acceptance
-    serverSocket.listen(5)
+    serverSocket.listen(128)
     print("The server is ready to accept connections")
 
     while True:

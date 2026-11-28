@@ -5,20 +5,16 @@ import time
 def main():
     ip = "127.0.0.1" #replace with valid ip address unless you really wana attack local host
     x = 0
-    while True: 
+    while True:                                             # loop infinitly
         try:
             t = threading.Thread(target=connect,args=(ip,)) # start new thread for connect with arguments of ip address
             t.start()                                       # start thread  
             x+=1                                            # incriment thread count
-        
         except:                                             # on any error 
             print(x)                                        # print number of threads
             return                                          # stop program
 
-
-
-def connect(ip):   
-     
+def connect(ip):     
     process = subprocess.Popen(
                         [sys.executable,"client.py"],   #run client.py in current environment 
                         stdin=subprocess.PIPE,          #pipe stdin

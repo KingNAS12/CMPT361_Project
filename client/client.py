@@ -206,9 +206,6 @@ def protocol_3_client(clientSocket:object, username:str, sym_key:bytes = None):
     SendMessage(clientSocket, "OK", sym_key)
     return
 
-
-
-
 def GetDestinations():
     """
     Author: Nathan
